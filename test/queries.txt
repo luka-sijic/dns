@@ -1,0 +1,4 @@
+example.com A
+cnn.com A
+google.com A
+yahoo.com A

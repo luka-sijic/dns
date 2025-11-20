@@ -1,3 +1,4 @@
+/*
 #include <arpa/inet.h>
 #include <stdio.h>
 #include "trie.h"
@@ -31,4 +32,4 @@ int main() {
 
     fclose(ptr);
     return 0;
-}
+}*/

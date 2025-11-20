@@ -1,0 +1,5 @@
+dnsperf \
+  -s 127.0.0.1 \
+  -p 53300 \
+  -d queries.txt \
+  -l 10
