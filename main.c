@@ -7,7 +7,7 @@
 
 #define DNS_PORT 53
 #define BUFFER_SIZE 65536
-#define RESPONSE_IP "192.168.1.100" // The IP we will answer with
+#define RESPONSE_IP "192.168.1.100" 
 
 // DNS Header Structure (12 bytes)
 // We use __attribute__((packed)) to prevent compiler padding
