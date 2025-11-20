@@ -289,6 +289,7 @@ int main(void) {
             printf("Ignored non-A record query (Type: %d)\n", qtype);
         }
     }
+    cbf_free(cbf);
     trie_free(tree);
     return 0;
 }

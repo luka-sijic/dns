@@ -16,6 +16,9 @@ void cbf_insert(CBF* c, const char* domain);
 
 int cbf_possibly_exists(CBF* c, const char* domain);
 
+void cbf_free(CBF* c);
+
+// Move to cbf.c
 static inline uint64_t fnv1a64(const void *data, size_t len) {
     const unsigned char *p = (const unsigned char *)data;
     uint64_t h = 1469598103934665603ULL;      // offset basis

@@ -24,7 +24,7 @@ int cbf_possibly_exists(CBF *c, const char *domain) {
     return 1;
 }
 
-void freeCBF(CBF *c) {
+void cbf_free(CBF *c) {
     if (!c) return;
     free(c->arr);
     free(c);
