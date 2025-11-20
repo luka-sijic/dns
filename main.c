@@ -5,81 +5,15 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "trie.h"
+#include "cbf.h"
+#include "utils.h"
 
 #define DNS_PORT 53300
 #define BUFFER_SIZE 65536
-#define RESPONSE_IP "192.168.1.100" 
 
-// DNS Header Structure (12 bytes)
-// We use __attribute__((packed)) to prevent compiler padding
-struct DNS_HEADER {
-    unsigned short id;          // Identification number
-    unsigned short flags;       // DNS Flags
-    unsigned short q_count;     // Number of Questions
-    unsigned short ans_count;   // Number of Answer RRs
-    unsigned short auth_count;  // Number of Authority RRs
-    unsigned short add_count;   // Number of Additional RRs
-} __attribute__((packed));
-
-// Resource Record structure (Answer section format)
-struct R_DATA {
-    unsigned short type;
-    unsigned short _class;
-    unsigned int   ttl;
-    unsigned short data_len;
-} __attribute__((packed));
-
-char* qname_to_string(const unsigned char* qname, char *out, size_t out_size) {
-    int pos = 0;
-    const unsigned char *p = qname;
-
-    while (*p != 0) {
-        unsigned int len = *p++;
-
-        if (len == 0 || pos + (int)len + 1 >= (int)out_size) {
-            break;
-        }
-
-        for (unsigned int i = 0; i < len; i++) {
-            out[pos++] = (char)*p++;
-        }
-
-        out[pos++] = '.';
-    }
-
-    if (pos == 0) {
-        // empty name?
-        out[pos] = '\0';
-    } else {
-        // overwrite the last dot with string terminator
-        out[pos - 1] = '\0';
-    }
-
-    return out;
-}
-
-int main() {
-    trieNode* tree = trie_create_node();
-
-    // parse from hosts.txt
-    char data[256];
-    FILE *ptr = fopen("hosts.txt", "r");
-    while (fgets(data, sizeof(data), ptr)) {
-        char first[128], second[128];
-        if (sscanf(data, "%127s %127s", first, second) == 2) {
-            uint32_t ip;
-            inet_pton(AF_INET, second, &ip);
-            trie_insert(tree, first, ip);
-            printf("first = %s, second = %s\n", first, second);
-        } else {
-            fprintf(stderr, "failed to parse line: %s", data);
-        }
-    }
-
+static int create_listener() {
     int sockfd;
-    struct sockaddr_in server_addr, client_addr;
-    unsigned char buffer[BUFFER_SIZE];
-    socklen_t addr_len = sizeof(client_addr);
+    struct sockaddr_in server_addr;
 
     // 1. Create UDP Socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -99,6 +33,133 @@ int main() {
         close(sockfd);
         exit(EXIT_FAILURE);
     }
+    return sockfd;
+}
+
+void parse_file(trieNode* tree, CBF* cbf) {
+    // parse from hosts.txt
+    char data[256];
+    FILE *ptr = fopen("hosts.txt", "r");
+    while (fgets(data, sizeof(data), ptr)) {
+        char first[128], second[128];
+        if (sscanf(data, "%127s %127s", first, second) == 2) {
+            uint32_t ip;
+            inet_pton(AF_INET, second, &ip);
+            trie_insert(tree, first, ip);
+            cbf_insert(cbf, first);
+            printf("first = %s, second = %s\n", first, second);
+        } else {
+            fprintf(stderr, "failed to parse line: %s", data);
+        }
+    }
+}
+
+void send_nxdomain_response(
+    int sockfd,
+    const struct sockaddr *client_addr,
+    socklen_t client_len,
+    const uint8_t *query,
+    size_t query_len
+) {
+    uint8_t response[512];
+    memset(response, 0, sizeof(response));
+
+    if (query_len < sizeof(struct DNS_HEADER)) {
+        // Malformed query
+        return;
+    }
+
+    struct DNS_HEADER *qhdr = (struct DNS_HEADER *)query;
+    struct DNS_HEADER *rhdr = (struct DNS_HEADER *)response;
+
+    // Copy ID from query
+    rhdr->id = qhdr->id;
+
+    // Parse RD from original query flags (in network byte order)
+    uint16_t qflags = ntohs(qhdr->flags);
+    int rd = (qflags & 0x0100) ? 1 : 0;  // RD is bit 8
+
+    // Build response flags:
+    // QR = 1 (response), OPCODE = 0, AA = 0, TC = 0, RD = from query
+    // RA = 0, Z = 0, RCODE = 3 (NXDOMAIN)
+    uint16_t rflags = 0;
+    rflags |= 0x8000;        // QR = 1 (response)
+    if (rd) {
+        rflags |= 0x0100;    // RD (copy from query)
+    }
+    rflags |= 0x0003;        // RCODE = 3 (NXDOMAIN)
+
+    rhdr->flags     = htons(rflags);
+    rhdr->q_count   = htons(1);  // one question
+    rhdr->ans_count = htons(0);  // no answers
+    rhdr->auth_count= htons(0);  // no authority RRs
+    rhdr->add_count = htons(0);  // no additional RRs
+
+    // Question section starts immediately after the 12-byte header
+    size_t qname_offset = sizeof(struct DNS_HEADER);
+    if (query_len < qname_offset + 1) {
+        // not enough data
+        return;
+    }
+
+    size_t offset = qname_offset;
+
+    // Walk QNAME (series of [len][label bytes] ... [0])
+    while (offset < query_len && query[offset] != 0) {
+        uint8_t label_len = query[offset];
+
+        // basic sanity check
+        if (label_len == 0 || offset + 1 + label_len >= query_len) {
+            return;
+        }
+
+        offset += 1 + label_len;
+    }
+
+    // Need: 0 byte + QTYPE(2) + QCLASS(2)
+    if (offset + 1 + 4 > query_len) {
+        return;
+    }
+
+    offset++; // skip the 0 terminator
+
+    // Total question length = QNAME + 0 + QTYPE + QCLASS
+    size_t question_len = offset + 4 - qname_offset;
+
+    if (sizeof(response) < sizeof(struct DNS_HEADER) + question_len) {
+        return;
+    }
+
+    // Copy question from query to response right after header
+    memcpy(response + sizeof(struct DNS_HEADER),
+           query + qname_offset,
+           question_len);
+
+    size_t resp_len = sizeof(struct DNS_HEADER) + question_len;
+
+    ssize_t sent = sendto(sockfd,
+                          response,
+                          resp_len,
+                          0,
+                          client_addr,
+                          client_len);
+    if (sent < 0) {
+        perror("sendto NXDOMAIN");
+    }
+}
+
+int main() {
+    trieNode* tree = trie_create_node();
+    CBF* cbf = cbf_create(100, .01);
+
+    parse_file(tree, cbf);
+
+    int sockfd;
+    unsigned char buffer[BUFFER_SIZE];
+
+    sockfd = create_listener();
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addr_len = sizeof(client_addr);
 
     printf("DNS Server listening on port %d...\n", DNS_PORT);
 
@@ -117,12 +178,32 @@ int main() {
         qname_to_string(qname, domain, sizeof(domain));
         printf("%s\n", domain);
 
+        if (cbf_possibly_exists(cbf, domain) == 0) {
+            send_nxdomain_response(
+                sockfd,
+                (struct sockaddr *)&client_addr, 
+                addr_len,
+                buffer, 
+                (size_t)n
+            );
+            continue;
+        }
+
         uint32_t ip;
-        if (trie_lookup(tree, domain, &ip)) {
+        if (trie_lookup(tree, domain, &ip) == 1) {
             char buf[INET_ADDRSTRLEN];
             if (inet_ntop(AF_INET, &ip, buf, sizeof buf)) {
                 printf("%s -> %s\n", domain, buf);
             }
+        } else {
+            send_nxdomain_response(
+                sockfd,
+                (struct sockaddr *)&client_addr, 
+                addr_len,
+                buffer, 
+                (size_t)n
+            );
+            continue;
         }
         
         // Move pointer past the qname (variable length) to get to QTYPE
@@ -148,8 +229,19 @@ int main() {
             // We reuse the 'buffer' because the Question section must be echoed back
             
             // -- Modify Header --
-            dns->flags = htons(0x8180); // Standard Response, No Error
+            uint16_t qflags = ntohs(dns->flags);
+            int rd = (qflags & 0x0100) ? 1 : 0;
+
+            uint16_t rflags = 0;
+            rflags |= 0x8000;
+            if (rd) {
+                rflags |= 0x0100;
+            }
+            dns->flags = htons(rflags); // Standard Response, No Error
+            dns->q_count = htons(1); // one question
             dns->ans_count = htons(1);  // We are providing 1 answer
+            dns->auth_count = htons(0); // zero authority
+            dns->add_count = htons(0); // zero additional
             // q_count remains 1, others remain 0
 
             // -- Construct Answer Section --

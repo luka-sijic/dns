@@ -16,7 +16,7 @@ void cbf_insert(CBF* c, const char* domain) {
     }
 }
 
-int cbf_possible_exists(CBF *c, const char *domain) {
+int cbf_possibly_exists(CBF *c, const char *domain) {
     for (int i = 0;i < c->k;i++) {
         size_t idx = cbfIndex(domain, i, c->m);
         if (c->arr[idx] == 0) return 0;
@@ -30,7 +30,7 @@ void freeCBF(CBF *c) {
     free(c);
 }
 
-
+/*
 int main() {
     CBF* c = cbf_create(100, .001);
     cbf_insert(c, "example.com");
@@ -38,4 +38,4 @@ int main() {
     printf("%d\n", cbf_possible_exists(c, "cnn.com"));
     freeCBF(c);
     return 0;
-}
+}*/
