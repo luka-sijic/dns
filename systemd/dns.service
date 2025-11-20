@@ -1,0 +1,13 @@
+[Unit]
+Description=B DNS service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/dns
+WorkingDirectory=/var/lib/dns
+User=nobody
+Group=nogroup
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

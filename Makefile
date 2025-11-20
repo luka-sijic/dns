@@ -2,6 +2,9 @@ CC      = clang
 CFLAGS  = -Wall -Wextra -Wpedantic -std=c11 -Iinclude
 LDFLAGS =
 
+PREFIX ?= /usr/local
+BINDIR  = $(PREFIX)/bin
+
 SRC_DIR   = src
 BUILD_DIR = build
 BIN_DIR   = bin
@@ -11,7 +14,7 @@ OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 TARGET = $(BIN_DIR)/dns
 
-.PHONY: all clean run test
+.PHONY: all clean run test install
 
 all: $(TARGET)
 
@@ -27,8 +30,15 @@ $(BUILD_DIR):
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
+install: $(TARGET)
+	mkdir -p $(BINDIR)
+	cp $(TARGET) $(BINDIR)/dns
+
 run: $(TARGET)
 	./$(TARGET)
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR) main.dSYM
+
+test:
+	@echo "no tests yet"
