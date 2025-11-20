@@ -39,6 +39,20 @@ int trie_lookup(trieNode* root, const char* domain, uint32_t *out_ip) {
     return 0;
 }
 
+int char_to_index(char c) {
+    if (c >= 'a' && c <= 'z') {
+        return c - 'a'; // 0–25
+    } else if (c >= '0' && c <= '9') {
+        return 26 + (c - '0'); // 26–35
+    } else if (c == '.') {
+        return 36; // 36
+    } else if (c == '-') {
+        return 37; // 37
+    } else {
+        return -1; // invalid char
+    }
+}
+
 void trie_free(trieNode* root) {
     for (int i = 0;i < ALPHABET_SIZE;i++) trie_free(root->children[i]);
     free(root);

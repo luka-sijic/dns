@@ -11,7 +11,7 @@
 #define DNS_PORT 53300
 #define BUFFER_SIZE 65536
 
-static int create_listener() {
+static int create_listener(void) {
     int sockfd;
     struct sockaddr_in server_addr;
 
@@ -148,7 +148,7 @@ void send_nxdomain_response(
     }
 }
 
-int main() {
+int main(void) {
     trieNode* tree = trie_create_node();
     CBF* cbf = cbf_create(100, .01);
 
