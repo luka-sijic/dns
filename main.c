@@ -4,8 +4,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "trie.h"
 
-#define DNS_PORT 53
+#define DNS_PORT 53300
 #define BUFFER_SIZE 65536
 #define RESPONSE_IP "192.168.1.100" 
 
@@ -28,7 +29,53 @@ struct R_DATA {
     unsigned short data_len;
 } __attribute__((packed));
 
+char* qname_to_string(const unsigned char* qname, char *out, size_t out_size) {
+    int pos = 0;
+    const unsigned char *p = qname;
+
+    while (*p != 0) {
+        unsigned int len = *p++;
+
+        if (len == 0 || pos + (int)len + 1 >= (int)out_size) {
+            break;
+        }
+
+        for (unsigned int i = 0; i < len; i++) {
+            out[pos++] = (char)*p++;
+        }
+
+        out[pos++] = '.';
+    }
+
+    if (pos == 0) {
+        // empty name?
+        out[pos] = '\0';
+    } else {
+        // overwrite the last dot with string terminator
+        out[pos - 1] = '\0';
+    }
+
+    return out;
+}
+
 int main() {
+    trieNode* tree = trie_create_node();
+
+    // parse from hosts.txt
+    char data[256];
+    FILE *ptr = fopen("hosts.txt", "r");
+    while (fgets(data, sizeof(data), ptr)) {
+        char first[128], second[128];
+        if (sscanf(data, "%127s %127s", first, second) == 2) {
+            uint32_t ip;
+            inet_pton(AF_INET, second, &ip);
+            trie_insert(tree, first, ip);
+            printf("first = %s, second = %s\n", first, second);
+        } else {
+            fprintf(stderr, "failed to parse line: %s", data);
+        }
+    }
+
     int sockfd;
     struct sockaddr_in server_addr, client_addr;
     unsigned char buffer[BUFFER_SIZE];
@@ -65,6 +112,18 @@ int main() {
 
         // Point to the Query Name part (immediately after header)
         unsigned char *qname = (unsigned char *)(buffer + sizeof(struct DNS_HEADER));
+        
+        char domain[256];
+        qname_to_string(qname, domain, sizeof(domain));
+        printf("%s\n", domain);
+
+        uint32_t ip;
+        if (trie_lookup(tree, domain, &ip)) {
+            char buf[INET_ADDRSTRLEN];
+            if (inet_ntop(AF_INET, &ip, buf, sizeof buf)) {
+                printf("%s -> %s\n", domain, buf);
+            }
+        }
         
         // Move pointer past the qname (variable length) to get to QTYPE
         // DNS names are length-prefixed labels ending with 0
@@ -126,8 +185,8 @@ int main() {
 
             // RDATA: The IP Address
             struct in_addr ip_addr;
-            inet_pton(AF_INET, RESPONSE_IP, &ip_addr);
-            memcpy(response_ptr, &ip_addr, 4);
+
+            memcpy(response_ptr, &ip, 4);
             response_ptr += 4;
 
             // 7. Send Response
@@ -138,5 +197,6 @@ int main() {
             printf("Ignored non-A record query (Type: %d)\n", qtype);
         }
     }
+    trie_free(tree);
     return 0;
 }

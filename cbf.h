@@ -10,11 +10,11 @@ typedef struct CBF {
     int k;
 } CBF;
 
-CBF* createCBF(double n, double p);
+CBF* cbf_create(double n, double p);
 
-void insert(CBF* c, const char* domain);
+void cbf_insert(CBF* c, const char* domain);
 
-int possiblyExists(CBF* c, const char* domain);
+int cbf_possible_exists(CBF* c, const char* domain);
 
 static inline uint64_t fnv1a64(const void *data, size_t len) {
     const unsigned char *p = (const unsigned char *)data;
