@@ -52,6 +52,7 @@ void parse_file(trieNode* tree, CBF* cbf) {
             fprintf(stderr, "failed to parse line: %s", data);
         }
     }
+    fclose(ptr);
 }
 
 void send_nxdomain_response(
