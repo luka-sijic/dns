@@ -27,7 +27,7 @@ static int char_to_index(char c) {
     }
 }
 
-trieNode* trie_create_node();
+trieNode* trie_create_node(void);
 void trie_insert(trieNode* root, char *domain, uint32_t ip_addr);
 int trie_lookup(trieNode* root, const char* domain, uint32_t *out_ip);
 void trie_free(trieNode* root);

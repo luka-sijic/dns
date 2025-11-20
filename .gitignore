@@ -4,4 +4,4 @@ main.dSYM/
 *.o
 
 build/
-.vscode/
+bin/

@@ -1,23 +1,34 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -O2 -Iinclude
+CC      = clang
+CFLAGS  = -Wall -Wextra -Wpedantic -std=c11 -Iinclude
 LDFLAGS =
 
-SRC = $(wildcard src/*.c)
-OBJ = $(SRC:src/%.c=build/%.o)
+SRC_DIR   = src
+BUILD_DIR = build
+BIN_DIR   = bin
 
-TARGET = bin/app
+SRC = $(wildcard $(SRC_DIR)/*.c)
+OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+
+TARGET = $(BIN_DIR)/dns
+
+.PHONY: all clean run test
 
 all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	@mkdir -p bin
+$(TARGET): $(OBJ) | $(BIN_DIR)
 	$(CC) $(OBJ) -o $@ $(LDFLAGS)
 
-build/%.o: src/%.c include/%.h
-	@mkdir -p build
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-clean:
-	rm -rf build bin
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
-.PHONY: all clean
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
+run: $(TARGET)
+	./$(TARGET)
+
+clean:
+	rm -rf $(BUILD_DIR) $(BIN_DIR) main.dSYM

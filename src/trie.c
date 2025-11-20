@@ -1,6 +1,6 @@
 #include "trie.h"
 
-trieNode* trie_create_node() {
+trieNode* trie_create_node(void) {
     trieNode* node = malloc(sizeof(trieNode));
     for (int i = 0;i < ALPHABET_SIZE;++i) node->children[i] = NULL;
     node->terminal = 0;
